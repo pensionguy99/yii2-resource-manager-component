@@ -6,14 +6,15 @@
  */
 namespace dosamigos\resourcemanager;
 
-use Aws\S3\Enum\CannedAcl;
 use Aws\S3\S3Client;
+use Aws\Sns\SnsClient;
 use Guzzle\Http\Exception\ClientErrorResponseException;
 use Guzzle\Service\Client;
 use yii\base\Component;
 use yii\base\InvalidConfigException;
 use yii\helpers\ArrayHelper;
 use Yii;
+
 
 /**
  *
@@ -25,19 +26,31 @@ use Yii;
  */
 class AmazonS3ResourceManager extends Component implements ResourceManagerInterface
 {
-
 	/**
 	 * @var string Amazon access key
 	 */
 	public $key;
+
 	/**
 	 * @var string Amazon secret access key
 	 */
 	public $secret;
+
+    /**
+     * @var string AWS region
+     */
+    public $region;
+
+    /**
+     * @var string AWS api version
+     */
+    public $version;
+
 	/**
 	 * @var string Amazon Bucket
 	 */
 	public $bucket;
+
 	/**
 	 * @var \Aws\S3\S3Client
 	 */
@@ -53,7 +66,7 @@ class AmazonS3ResourceManager extends Component implements ResourceManagerInterf
 	 */
 	public function init()
 	{
-		foreach (['key', 'secret', 'bucket'] as $attribute) {
+		foreach (['key', 'secret', 'bucket', 'region', 'version'] as $attribute) {
 			if ($this->$attribute === null) {
 				throw new InvalidConfigException(strtr('"{class}::{attribute}" cannot be empty.', [
 					'{class}' => static::className(),
@@ -79,7 +92,7 @@ class AmazonS3ResourceManager extends Component implements ResourceManagerInterf
 			'Bucket' => $this->bucket,
 			'Key' => $name,
 			'SourceFile' => $file->tempName,
-			'ACL' => CannedAcl::PUBLIC_READ // default to ACL public read
+			'ACL' => 'public-read' // default to ACL public read
 		], $options);
 
 		return $this->getClient()->putObject($options);
@@ -127,7 +140,7 @@ class AmazonS3ResourceManager extends Component implements ResourceManagerInterf
 	{
 		return $this->getClient()->getObjectUrl($this->bucket, $name, $expires);
 	}
-	
+
 	/**
 	 * Delete all objects that match a specific key prefix.
 	 * @param string $prefix delete only objects under this key prefix
@@ -144,7 +157,7 @@ class AmazonS3ResourceManager extends Component implements ResourceManagerInterf
 	 */
 	public function listFiles($directory) {
 		$files = [];
-		
+
 		$iterator = $this->getClient()->getIterator('ListObjects', [
 			'Bucket' => $this->bucket,
 			'Prefix' => $directory,
@@ -162,26 +175,27 @@ class AmazonS3ResourceManager extends Component implements ResourceManagerInterf
 				$files[] = $file;
 			}
 		}
-		
+
 		return $files;
 	}
 
-	/**
-	 * Returns a S3Client instance
-	 * @return \Aws\S3\S3Client
-	 */
-	public function getClient()
-	{
-		if ($this->_client === null) {
-			$settings=[
-				'key' => $this->key,
-				'secret' => $this->secret
-			];
-			if($this->enableV4)
-				$settings['signature']='v4';
-			
-			$this->_client = S3Client::factory($settings);
-		}
-		return $this->_client;
-	}
+    /**
+     * Returns a S3Client instance
+     * @return \Aws\S3\S3Client
+     */
+    public function getClient()
+    {
+        if ($this->_client === null) {
+            $this->_client = new S3Client([
+                'credentials' => [
+                    'key'    => $this->key,
+                    'secret' => $this->secret,
+                ],
+                'region'  => $this->region,
+                'version' => $this->version,
+            ]);
+        }
+
+        return $this->_client;
+    }
 }
